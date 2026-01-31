@@ -11,7 +11,7 @@ def update_reading_periodically(app, sensorData, sensors, interval=60):
     Function to periodically gather reading every 'interval' seconds and update the app
     """
     def loop():
-        while True:
+        while app.running:
             # Gather the reading (and optionally update the app with it)
             data = sensors.gather_reading()
             data.print()
@@ -22,6 +22,8 @@ def update_reading_periodically(app, sensorData, sensors, interval=60):
 
             # Wait for the next interval
             time.sleep(interval)
+        root.quit()
+        root.destroy()
 
     # Start the periodic update in a background thread
     thread = threading.Thread(target=loop, daemon=True)
@@ -32,6 +34,10 @@ if __name__ == "__main__":
     sensorData = SensorData()
     sensors = Sensors()
     app = Dashboard(root, sensorData)
+
+    # sensorData.delete_last24()
+    # fakedata = sensors.prior24()
+    # sensorData.fake24(fakedata)
 
     # Start the periodic gathering of data every 60 seconds
     update_reading_periodically(app, sensorData, sensors, interval=1)

@@ -1,123 +1,166 @@
 import numpy as np
-import threading
 import tkinter as tk
 import tkinter.font as tkFont
+import tkinter.messagebox as mb
+
+from datetime import datetime, timedelta
+
 import matplotlib
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import matplotlib.dates as mdates
-from matplotlib import animation
-from matplotlib import style
+from matplotlib import animation, style
 from matplotlib.figure import Figure
-from datetime import datetime, timedelta
-import datetime as dt
-from PIL import ImageTk, Image
 import matplotlib.dates as mdates
+
+from PIL import ImageTk, Image
 from AppSensorData import SensorData
+from Reading import Reading
 
+# ────────────────────────
+# Configuration Constants
+# ────────────────────────
+UPDATE_INTERVAL_MS = 1000
+PLOT_WINDOW = timedelta(hours=24)
 
-matplotlib.use('TkAgg')
+PRESSURE_ICONS = [
+    (973.5, "stormcloudcloud.png"),
+    (990.5, "raincloud.png"),
+    (1007.5, "cloud.png"),
+    (1024.4, "intermediate.png"),
+    (float("inf"), "sun.png"),
+]
+
+IAQ_ICONS = [
+    (50, "green.png"),
+    (100, "yellow.png"),
+    (150, "orange.png"),
+    (200, "red.png"),
+    (300, "purple.png"),
+    (float("inf"), "maroon.png"),
+]
+
+matplotlib.use("TkAgg")
 style.use("dark_background")
 
 
 class Dashboard:
-    def __init__(self, root, sensorData):
+    def __init__(self, root: tk.Tk, sensor_data: SensorData):
         self.root = root
-        self.sensor_data = sensorData
-        #self.root.attributes("-fullscreen", True)  # Default to fullscreen
-        self.root.configure(bg='black')
+        self.sensor_data = sensor_data
 
-        # Data containers
-        self.max_elements = 50
+        self.root.configure(bg="black")
 
-        # Plot visibility flags
-        self.humid_plot_visible = True
-        self.temp_plot_visible = True
+        # Plot visibility
+        self.second_axes = "humid"
 
-        # Load historical data
+        # Load stored data
         self.sensor_data.load_data()
 
-        self.setup_ui()
-        self.bind_events()
+        # Cache images
+        self._load_icons()
 
-        # Animation setup
-        self.ani = animation.FuncAnimation(self.fig, self.animate, interval=1000)  # Update every second
+        self._setup_ui()
+        self._bind_events()
+        self._setup_plot()
 
-        # Trigger updates
-        self.update_time_and_date()  # Start time/date updates on initialization
-    
-    def setup_ui(self):
+        # Start animation
+        self.ani = animation.FuncAnimation(
+            self.fig, self.animate, interval=UPDATE_INTERVAL_MS
+        )
+
+        self.running = True
+
+        self.update_time_and_date()
+
+    # ────────────────────────
+    # UI Setup
+    # ────────────────────────
+    def _setup_ui(self):
         self.root.title("Dashboard")
         self.frame = tk.Frame(self.root, bg="black")
         self.frame.pack(fill=tk.BOTH, expand=True)
 
-        self.dfont = tkFont.Font(size=-6)
+        # Configure grid: 4 rows, 4 columns
+        for i in range(4):
+            self.frame.grid_rowconfigure(i, weight=1)
+        for i in range(4):
+            self.frame.grid_columnconfigure(i, weight=1)
 
-        # Grid layout
-        self.frame.grid_rowconfigure(0, weight=1)
-        self.frame.grid_rowconfigure(1, weight=1)
-        self.frame.grid_rowconfigure(2, weight=1)
-        self.frame.grid_rowconfigure(3, weight=1)
-        self.frame.grid_rowconfigure(4, weight=1)
-        self.frame.grid_columnconfigure(0, weight=1)
-        self.frame.grid_columnconfigure(1, weight=1)
-        self.frame.grid_columnconfigure(2, weight=1)
-        self.frame.grid_columnconfigure(3, weight=1)
-        self.frame.grid_columnconfigure(4, weight=1)
-        self.frame.grid_columnconfigure(5, weight=1)
-
-        # Date Label (at the top, across the first three columns)
-        self.date_label = tk.Label(self.frame, text="", bg="black", fg="white", font=("Helvetica", 36))
-        self.date_label.grid(row=0, column=0, columnspan=3, sticky="nsew", padx=10, pady=(20, 10))
-
-        # Time Label (aligned with plot on the same y-height)
-        self.time_label = tk.Label(self.frame, text="", bg="black", fg="white", font=("Helvetica", 96))
-        self.time_label.grid(row=1, column=0, columnspan=3, rowspan=2, sticky="nsew", padx=10, pady=10)
-
-        # Temperature Label and Weather Image (in the second row, right side)
-        self.label_temp = tk.Label(self.frame, text="--°C", bg="black", fg="white", font=("Helvetica", 36))
-        self.label_temp.grid(row=0, column=3, columnspan=2, padx=10)
-
-        self.weather_img_label = tk.Label(self.frame, bg="black")
-        self.weather_img_label.grid(row=0, column=5, padx=5)
-
-        # Plot (size 2x2, aligned to the right, adjust space for y-axes)
+        # ── PLOT (top left, 2/3 width)
         self.plot_frame = tk.Frame(self.frame, bg="black")
-        self.plot_frame.grid(row=1, column=3, rowspan=2, columnspan=3, sticky="nse", padx=10, pady=10)
-        self.fig = Figure(figsize=(3.5, 2))  # Increased size for the plot
-        self.ax1 = self.fig.add_subplot(1, 1, 1)
-        self.ax2 = self.ax1.twinx()
-        
-        # Ensure proper layout of axes and labels
-        self.fig.tight_layout(pad=2.0)  # Adjusts spacing between plot and labels
+        self.plot_frame.grid(row=0, column=1, rowspan=3, columnspan=3, sticky="nsew")
 
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.plot_frame)
-        self.canvas_plot = self.canvas.get_tk_widget()
-        self.canvas_plot.grid(row=0, column=0, sticky="nse")
+        # ── TIME (top right, 1/3 width)
+        self.time_label = tk.Label(
+            self.frame, bg="black", fg="white", font=("Helvetica", 96)
+        )
+        self.time_label.grid(row=1, column=0, rowspan=1, sticky="new")
 
-        # IAQ Image Below Plot (aligned below the plot, in row 3)
-        self.label_iaq = tk.Label(self.frame, text="Air Quality:", bg="black", fg="white", font=("Helvetica", 24))
-        self.label_iaq.grid(row=3, column=4, sticky="se", padx=10, pady=(10, 5))
+        # ── DATE (above bottom row)
+        self.date_label = tk.Label(
+            self.frame, bg="black", fg="white", font=("Helvetica", 36)
+        )
+        self.date_label.grid(row=0, column=0, columnspan=1, sticky="n")
+        self.date_label.bind("<Button-1>", lambda e: self.exit_gui())
+
+        # ── HUMIDITY AND TEMPERATURE (bottom left)
+        self.label_humid = tk.Label(
+            self.frame, text="Humidity: --%", bg="black", fg="white", font=("Helvetica", 24)
+        )
+        self.label_humid.grid(row=3, column=1, sticky="w", padx=10)
+        self.label_humid.bind("<Button-1>", lambda e: self.toggle_axes("humid"))
+
+        self.label_temp = tk.Label(
+            self.frame, text="--°C", bg="black", fg="white", font=("Helvetica", 40)
+        )
+        self.label_temp.grid(row=2, column=0, sticky="new", padx=10)
+
+        # ── PRESSURE ICON (bottom left)
+        self.weather_img_label = tk.Label(self.frame, bg="black")
+        self.weather_img_label.grid(row=3, column=0, sticky="nsew", padx=10)
+        self.weather_img_label.bind("<Button-1>", lambda e: self.toggle_axes("pressure"))
+
+        # ── IAQ (bottom right)
+        self.label_iaq = tk.Label(
+            self.frame, text="IAQ: ", bg="black", fg="white", font=("Helvetica", 24)
+        )
+        self.label_iaq.grid(row=3, column=2, sticky="e", padx=10)
 
         self.iaq_img_label = tk.Label(self.frame, bg="black")
-        self.iaq_img_label.grid(row=3, column=5, rowspan=2,sticky="s", padx=10, pady=(5, 20))
+        self.iaq_img_label.grid(row=3, column=3, sticky="w", padx=10)
+        self.iaq_img_label.bind("<Button-1>", lambda e: self.toggle_axes("iaq"))
 
-        # Humidity Label (left side of the plot, align with Air Quality)
-        self.label_humid = tk.Label(self.frame, text="Humidity: --%", bg="black", fg="white", font=("Helvetica", 24))
-        self.label_humid.grid(row=3, column=0, columnspan=3, sticky="sew", padx=10, pady=10)
 
-        # Bottom Right: Buttons for toggling visibility
-        self.button_frame = tk.Frame(self.frame, bg="black")
-        self.button_frame.grid(row=4, column=3, columnspan=2, sticky="e", padx=10, pady=10)
-        self.btn_toggle_temp = tk.Button(
-            self.button_frame, text="Temperature Plot", command=self.toggle_temp_visibility, bg="gray", fg="white"
-        )
-        self.btn_toggle_humid = tk.Button(
-            self.button_frame, text="Humidity Plot", command=self.toggle_humid_visibility, bg="gray", fg="white"
-        )
-        self.btn_toggle_temp.grid(row=0, column=0, padx=5)
-        self.btn_toggle_humid.grid(row=0, column=1, padx=5)
+        
 
-    def bind_events(self):
+    # ────────────────────────
+    # Plot Setup
+    # ────────────────────────
+    def _setup_plot(self):
+        self.fig = Figure()
+        self.ax_temp = self.fig.add_subplot(111)
+        self.ax_second = self.ax_temp.twinx()
+
+        self.second_fill = self.ax_second.fill_between([], [], alpha=0.3, color="tab:red")
+        (self.temp_line,) = self.ax_temp.plot([], [], color="tab:blue", linewidth=2)
+
+        #self.ax_secondary.set_ylabel("Humidity (%)", color="tab:red")
+        self.ax_temp.set_ylabel("Temperature (°C)", color="tab:blue")
+
+        self.ax_second.set_ylabel("")
+        
+        self.ax_temp.xaxis.set_major_locator(mdates.HourLocator(interval=3))
+        self.ax_temp.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+        self.fig.autofmt_xdate()
+        self.fig.tight_layout(pad=2)
+
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.plot_frame)
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+
+    # ────────────────────────
+    # Event Handling
+    # ────────────────────────
+    def _bind_events(self):
         self.root.bind("<F11>", self.toggle_fullscreen)
         self.root.bind("<Escape>", self.end_fullscreen)
 
@@ -127,96 +170,98 @@ class Dashboard:
     def end_fullscreen(self, event=None):
         self.root.attributes("-fullscreen", False)
 
-    def toggle_temp_visibility(self):
-        self.temp_plot_visible = not self.temp_plot_visible
+    def toggle_plot(self, key):
+        self.plot_visible[key] = not self.plot_visible[key]
 
-    def toggle_humid_visibility(self):
-        self.humid_plot_visible = not self.humid_plot_visible
+    def toggle_axes(self, mode):
+        # Toggle off if already active
+        if self.second_axes == mode:
+            self.second_axes = None
+        else:
+            self.second_axes = mode
 
+    # ────────────────────────
+    # Time / Sensor Updates
+    # ────────────────────────
     def update_time_and_date(self):
-        """Updates the time and date labels every second."""
-        current_time = datetime.now().strftime("%H:%M")
-        current_date = datetime.now().strftime("%b %d, %Y")
-        self.time_label.configure(text=current_time)
-        self.date_label.configure(text=current_date)
+        now = datetime.now()
+        self.time_label.config(text=now.strftime("%H:%M"))
+        self.date_label.config(text=now.strftime("%b %d, %Y"))
+        self.root.after(UPDATE_INTERVAL_MS, self.update_time_and_date)
 
-        # Schedule next update in 1 second
-        self.root.after(1000, self.update_time_and_date)
-    
-    def update_sensor_data(self, data):
-        """Updates the sensor data using the provided data."""
-        if data is None:
-            print("Error: Received None data in update_sensor_data.")
-            return
+    def update_sensor_data(self, reading: Reading):
+        """Update labels and icons from a Reading object."""
+        self.label_temp.config(text=f"{reading.temperature:.1f}°C")
+        self.label_humid.config(text=f"Humidity: {reading.humidity:.0f}%")
 
-        self.label_temp.configure(text=f"{data.temperature:.1f}°C")
-        self.label_humid.configure(text=f"Humidity: {data.humidity:.0f}%")
+        self.weather_img_label.config(image=self._select_icon(reading.pressure, self.weather_icons))
+        self.iaq_img_label.config(image=self._select_icon(reading.iaq, self.iaq_icons))
+    # ────────────────────────
+    # Animation Loop
+    # ────────────────────────
+    def animate(self, _):
+        # Convert Reading objects to times and values
+        times = [mdates.date2num(r.time) for r in self.sensor_data.records]
 
-        # Update weather and IAQ images
-        weather_image = weatherimg(data.pressure)
-        iaq_image = iaqimg(data.iaq)
-        self.weather_img_label.configure(image=weather_image)
-        self.weather_img_label.image = weather_image
-        self.iaq_img_label.configure(image=iaq_image)
-        self.iaq_img_label.image = iaq_image
+        if self.sensor_data.has_temps():
+            temps = [r.temperature for r in self.sensor_data.records]
+            self.temp_line.set_data(times, temps)
 
-        # Trigger the plot update
-        #self.animate(None)  # Call animate to refresh the plot
+            tmin, tmax = min(temps), max(temps)
+            self.ax_temp.set_ylim(tmin - 1, tmax + 1)
 
-    def animate(self, i):
-        """Updates the plot with the latest data."""
-        # Plot updates for temperature and humidity
-        self.ax1.clear()
-        self.ax2.clear()        
+        for artist in list(self.ax_second.collections):
+            artist.remove()
 
-        if self.humid_plot_visible and self.sensor_data.has_humids():
-            color = 'tab:red'
-            self.ax1.fill_between(self.sensor_data.xs, self.sensor_data.humids, 0, linewidth=2, color=color, alpha=0.3)
-            self.ax1.set_ylabel('Humidity (%)', color=color)
-            self.ax1.tick_params(axis='y', labelcolor=color)
-            self.ax1.set_ylim([np.floor(min(self.sensor_data.humids) / 5) * 5, np.ceil(max(self.sensor_data.humids) / 5) * 5])
+        # ── SECONDARY DATA (fill_between)
+        if self.second_axes == "humid" and self.sensor_data.has_humids():
+            data = [r.humidity for r in self.sensor_data.records]
+            label = "Humidity (%)"
+            color = "tab:red"
+            ymin, ymax = 0, 100
 
-        if self.temp_plot_visible and self.sensor_data.has_temps():
-            color = 'tab:blue'
-            self.ax2.plot(self.sensor_data.xs, self.sensor_data.temps, linewidth=2, color=color)
-            self.ax2.set_ylabel('Temperature (°C)', color=color)
-            self.ax2.tick_params(axis='y', labelcolor=color)
-            self.ax2.set_ylim([np.floor(min(self.sensor_data.temps)), np.ceil(max(self.sensor_data.temps))])
+        elif self.second_axes == "iaq" and self.sensor_data.has_iaqs():
+            data = [r.iaq for r in self.sensor_data.records]
+            label = "IAQ"
+            color = "tab:green"
+            ymin, ymax = min(data) - 5, max(data) + 5
 
-        # Set the x-axis limit to the last 24 hours
-        one_day_ago = mdates.date2num(datetime.now() - dt.timedelta(minutes=1))
-        self.ax1.set_xlim([one_day_ago, mdates.date2num(datetime.now())])
+        elif self.second_axes == "pressure" and self.sensor_data.has_pressures():
+            data = [r.pressure for r in self.sensor_data.records]
+            label = "Pressure (hPa)"
+            color = "tab:purple"
+            ymin, ymax = min(data) - 2, max(data) + 2
 
-        # Format the x-axis labels as hours and minutes
-        self.ax1.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-        self.fig.autofmt_xdate()
+        else:
+            data = None
 
-        self.canvas.draw()
+        if data:
+            self.ax_second.fill_between(times, data, color=color, alpha=0.3)
+            self.ax_second.set_ylabel(label, color=color)
+            self.ax_second.set_ylim(ymin, ymax)
+        else:
+            self.ax_second.set_ylabel("")
 
-# Functions for images
-def weatherimg(press):
-    if press <= 973.5:
-        return ImageTk.PhotoImage(Image.open("stormcloudcloud.png"))
-    elif press <= 990.5:
-        return ImageTk.PhotoImage(Image.open("raincloud.png"))
-    elif press <= 1007.5:
-        return ImageTk.PhotoImage(Image.open("cloud.png"))
-    elif press <= 1024.4:
-        return ImageTk.PhotoImage(Image.open("intermediate.png"))
-    else:
-        return ImageTk.PhotoImage(Image.open("sun.png"))
+        self.canvas.draw_idle()
 
+    def exit_gui(self):
+        if mb.askyesno("Exit", "Are you sure you want to exit?"):
+            self.running = False
 
-def iaqimg(iaq):
-    if iaq <= 50:
-        return ImageTk.PhotoImage(Image.open("green.png"))
-    elif iaq <= 100:
-        return ImageTk.PhotoImage(Image.open("yellow.png"))
-    elif iaq <= 150:
-        return ImageTk.PhotoImage(Image.open("orange.png"))
-    elif iaq <= 200:
-        return ImageTk.PhotoImage(Image.open("red.png"))
-    elif iaq <= 300:
-        return ImageTk.PhotoImage(Image.open("purple.png"))
-    else:
-        return ImageTk.PhotoImage(Image.open("maroon.png"))
+        
+
+    # ────────────────────────
+    # Icon Utilities
+    # ────────────────────────
+    def _load_icons(self):
+        self.weather_icons = self._cache_icons(PRESSURE_ICONS)
+        self.iaq_icons = self._cache_icons(IAQ_ICONS)
+
+    def _cache_icons(self, icon_map):
+        return [(limit, ImageTk.PhotoImage(Image.open(path))) for limit, path in icon_map]
+
+    @staticmethod
+    def _select_icon(value, icon_map):
+        for limit, icon in icon_map:
+            if value <= limit:
+                return icon

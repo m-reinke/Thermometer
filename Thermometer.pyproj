@@ -5,7 +5,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>{c9386537-0b64-4e9b-801b-3f15d7049984}</ProjectGuid>
     <ProjectHome />
-    <StartupFile>AppGUI.py</StartupFile>
+    <StartupFile>MainApp.py</StartupFile>
     <SearchPath />
     <WorkingDirectory>.</WorkingDirectory>
     <OutputPath>.</OutputPath>

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from math import isnan
 import random
 from AppReading import Reading
@@ -68,6 +68,31 @@ class Sensors:
         gas_score = (0.75 / (gas_upper_limit - gas_lower_limit) * gas_reference -
                     (gas_lower_limit * (0.75 / (gas_upper_limit - gas_lower_limit)))) * 100
         return round((100 - hum_score - gas_score) * 5)
+
+    def prior24(self):
+        """
+        Generate synthetic readings for every minute in the previous 24 hours.
+        Returns a list of AppReading.Reading objects with timestamps in ISO format
+        using a space separator (compatible with datetime.fromisoformat used elsewhere).
+        """
+        readings = []
+        start = datetime.now().replace(second=0, microsecond=0) - timedelta(hours=24)
+        minutes = 24 * 60
+
+        # Use the sensor measurement methods to generate a plausible time series.
+        for i in range(minutes):
+            ts = start + timedelta(minutes=i)
+            temperature = self.meas_temperature()
+            humidity = self.meas_humidity()
+            pressure = self.meas_pressure()
+            gas = self.meas_gas()
+            lux = self.meas_lux()
+            iaq = self.calc_iaq(humidity, gas)
+
+            reading = Reading(ts.isoformat(sep=' '), temperature, humidity, pressure, gas, iaq, lux)
+            readings.append(reading)
+
+        return readings
 
     # Gather all sensor readings and create a Reading object
     def gather_reading(self):
