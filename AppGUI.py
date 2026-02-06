@@ -54,6 +54,7 @@ class Dashboard:
 
         # Load stored data
         self.sensor_data.load_data()
+        self.datacount = len(self.sensor_data.records)
 
         # Cache images
         self._load_icons()
@@ -70,6 +71,10 @@ class Dashboard:
         self.running = True
 
         self.update_time_and_date()
+
+    def exit_gui(self):
+        if mb.askyesno("Exit", "Are you sure you want to exit?"):
+            self.running = False
 
     # ────────────────────────
     # UI Setup
@@ -93,7 +98,8 @@ class Dashboard:
         self.time_label = tk.Label(
             self.frame, bg="black", fg="white", font=("Helvetica", 96)
         )
-        self.time_label.grid(row=1, column=0, rowspan=1, sticky="new")
+        self.time_label.grid(row=1, column=0, rowspan=1, sticky="new", padx = (0,10), ipadx =15)
+
 
         # ── DATE (above bottom row)
         self.date_label = tk.Label(
@@ -192,7 +198,7 @@ class Dashboard:
     def update_sensor_data(self, reading: Reading):
         """Update labels and icons from a Reading object."""
         self.label_temp.config(text=f"{reading.temperature:.1f}°C")
-        self.label_humid.config(text=f"Humidity: {reading.humidity:.0f}%")
+        self.label_humid.config(text=f"Humidity: {reading.humidity:.0f}% {self.datacount:.0f}")
 
         self.weather_img_label.config(image=self._select_icon(reading.pressure, self.weather_icons))
         self.iaq_img_label.config(image=self._select_icon(reading.iaq, self.iaq_icons))
@@ -200,53 +206,59 @@ class Dashboard:
     # Animation Loop
     # ────────────────────────
     def animate(self, _):
-        # Convert Reading objects to times and values
-        times = [mdates.date2num(r.time) for r in self.sensor_data.records]
+        with self.sensor_data._lock:
+            self.datacount = len(self.sensor_data.records)
 
-        if self.sensor_data.has_temps():
-            temps = [r.temperature for r in self.sensor_data.records]
-            self.temp_line.set_data(times, temps)
+            times = [mdates.date2num(r.time) for r in self.sensor_data.records]
 
-            tmin, tmax = min(temps), max(temps)
-            self.ax_temp.set_ylim(tmin - 1, tmax + 1)
+            if not times:
+                return
 
-        for artist in list(self.ax_second.collections):
-            artist.remove()
+            # ── Apply 24h window
+            end = max(times)
+            start = mdates.date2num(
+                mdates.num2date(end) - PLOT_WINDOW
+            )
 
-        # ── SECONDARY DATA (fill_between)
-        if self.second_axes == "humid" and self.sensor_data.has_humids():
-            data = [r.humidity for r in self.sensor_data.records]
-            label = "Humidity (%)"
-            color = "tab:red"
-            ymin, ymax = 0, 100
+            self.ax_temp.set_xlim(start, end)
+            self.ax_second.set_xlim(start, end)
 
-        elif self.second_axes == "iaq" and self.sensor_data.has_iaqs():
-            data = [r.iaq for r in self.sensor_data.records]
-            label = "IAQ"
-            color = "tab:green"
-            ymin, ymax = min(data) - 5, max(data) + 5
+            if self.sensor_data.has_temps():
+                temps = [r.temperature for r in self.sensor_data.records]
+                self.temp_line.set_data(times, temps)
 
-        elif self.second_axes == "pressure" and self.sensor_data.has_pressures():
-            data = [r.pressure for r in self.sensor_data.records]
-            label = "Pressure (hPa)"
-            color = "tab:purple"
-            ymin, ymax = min(data) - 2, max(data) + 2
+                tmin, tmax = min(temps), max(temps)
+                self.ax_temp.set_ylim(tmin - 1, tmax + 1)
 
-        else:
+            # Clear old fills
+            for artist in list(self.ax_second.collections):
+                artist.remove()
+
+            # Secondary axis
             data = None
 
-        if data:
-            self.ax_second.fill_between(times, data, color=color, alpha=0.3)
-            self.ax_second.set_ylabel(label, color=color)
-            self.ax_second.set_ylim(ymin, ymax)
-        else:
-            self.ax_second.set_ylabel("")
+            if self.second_axes == "humid" and self.sensor_data.has_humids():
+                data = [r.humidity for r in self.sensor_data.records]
+                label, color, ymin, ymax = "Humidity (%)", "tab:red", 0, 100
 
-        self.canvas.draw_idle()
+            elif self.second_axes == "iaq" and self.sensor_data.has_iaqs():
+                data = [r.iaq for r in self.sensor_data.records]
+                label, color = "IAQ", "tab:green"
+                ymin, ymax = min(data) - 5, max(data) + 5
 
-    def exit_gui(self):
-        if mb.askyesno("Exit", "Are you sure you want to exit?"):
-            self.running = False
+            elif self.second_axes == "pressure" and self.sensor_data.has_pressures():
+                data = [r.pressure for r in self.sensor_data.records]
+                label, color = "Pressure (hPa)", "tab:purple"
+                ymin, ymax = min(data) - 2, max(data) + 2
+
+            if data is not None:
+                self.ax_second.fill_between(times, data, color=color, alpha=0.3)
+                self.ax_second.set_ylabel(label, color=color)
+                self.ax_second.set_ylim(ymin, ymax)
+            else:
+                self.ax_second.set_ylabel("")
+
+            self.canvas.draw_idle()
 
         
 

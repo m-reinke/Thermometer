@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from math import isnan
 import random
+import re
 from AppReading import Reading
 
 class Sensors:
@@ -21,12 +22,14 @@ class Sensors:
     # Measure temperature
     def meas_temperature(self):
         self.lastTemp = self.getRandom(self.lastTemp)
-        return self.lastTemp
+        ref_temp = self.lastTemp + self.getRandom(1)
+        return self.lastTemp, ref_temp    
 
     # Measure humidity
     def meas_humidity(self):
         self.lasthumidity = self.getRandom(self.lasthumidity)
-        return self.lasthumidity
+        ref_temp = self.lasthumidity + self.getRandom(3)
+        return self.lasthumidity, ref_temp
 
     # Measure air pressure
     def meas_pressure(self):
@@ -80,16 +83,9 @@ class Sensors:
         minutes = 24 * 60
 
         # Use the sensor measurement methods to generate a plausible time series.
-        for i in range(minutes):
-            ts = start + timedelta(minutes=i)
-            temperature = self.meas_temperature()
-            humidity = self.meas_humidity()
-            pressure = self.meas_pressure()
-            gas = self.meas_gas()
-            lux = self.meas_lux()
-            iaq = self.calc_iaq(humidity, gas)
-
-            reading = Reading(ts.isoformat(sep=' '), temperature, humidity, pressure, gas, iaq, lux)
+        for i in range(minutes):            
+            reading = self.gather_reading()
+            reading.time = start + timedelta(minutes=i)
             readings.append(reading)
 
         return readings
@@ -97,16 +93,16 @@ class Sensors:
     # Gather all sensor readings and create a Reading object
     def gather_reading(self):
         """Gather all sensor readings, create a Reading object, and save it."""
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        temperature = self.meas_temperature()
-        humidity = self.meas_humidity()
+        current_time = datetime.now()
+        temperature, temperature_ref = self.meas_temperature()
+        humidity, humidity_ref = self.meas_humidity()
         pressure = self.meas_pressure()
         gas = self.meas_gas()
         lux = self.meas_lux()
         iaq = self.calc_iaq(humidity, gas)
         
         # Create a Reading object
-        reading = Reading(current_time, temperature, humidity, pressure, gas, iaq, lux)
+        reading = Reading(current_time, temperature, humidity, pressure, gas, iaq, lux, temperature_ref, humidity_ref)
         
         return reading
 

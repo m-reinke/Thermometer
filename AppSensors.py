@@ -1,55 +1,67 @@
 from datetime import datetime
 from math import isnan
+from AppReading import Reading
 import board
+import busio
 import adafruit_bme680
 import adafruit_veml7700
+import adafruit_htu31d
+import logging
+
 
 class Sensors:
-    def __init__():
+    def __init__(self):
         # Initialize the sensors
         self.i2c = board.I2C()
-        self.bme680 = adafruit_bme680.Adafruit_BME680_I2C(i2c)
-        self.veml7700 = adafruit_veml7700.VEML7700(i2c)
+        self.bme680 = adafruit_bme680.Adafruit_BME680_I2C(self.i2c)
+        self.veml7700 = adafruit_veml7700.VEML7700(self.i2c)
+        self.htu31 = adafruit_htu31d.HTU31D(self.i2c)
 
         self.TEMP_OFFSET = -5.3  # Calibrate temperature sensor
 
     # Measure temperature
-    def meas_temperature():
+    def meas_temperature(self):
         return self.safe_measurement(lambda: self.bme680.temperature + self.TEMP_OFFSET)
 
     # Measure humidity
-    def meas_humidity():
+    def meas_humidity(self):
         return self.safe_measurement(lambda: self.bme680.humidity)
 
     # Measure air pressure
-    def meas_pressure():
+    def meas_pressure(self):
         return self.safe_measurement(lambda: self.bme680.pressure)
 
     # Measure gas resistance
-    def meas_gas(n_meas=5):
+    def meas_gas(self, n_meas=5):
         def gas_avg():
             cumul_ohm = 0
             for _ in range(n_meas):
                 cumul_ohm += self.bme680.gas
             return cumul_ohm / n_meas
-        return safe_measurement(gas_avg)
+        return self.safe_measurement(gas_avg)
 
     # Measure brightness
-    def meas_lux():
-        return safe_measurement(lambda: self.veml7700.lux)
+    def meas_lux(self):
+        return self.safe_measurement(lambda: self.veml7700.lux)
+
+    def meas_reference(self):
+        if(not self.htu31):
+            return float('nan'), float('nan')   
+        return self.safe_measurement(lambda: self.htu31.measurements)
 
     # Define the measurement methods
-    def safe_measurement(measurement_func):
+    def safe_measurement(self, measurement_func):
         """Safely execute a measurement function with NaN as fallback."""
         try:
             return measurement_func()
         except Exception as e:
             print(f"Error in {measurement_func.__name__}: {e}")
+            logger = logging.error(e, stack_info=True, exc_info=True)
             return float('nan')  # Return NaN for invalid readings
 
 
     # Calculate air quality index
-    def calc_iaq(h, r):
+    def calc_iaq(self, h, r):
         if isnan(h) or isnan(r):
             return float('nan')  # Return NaN if inputs are invalid
 
@@ -77,16 +89,17 @@ class Sensors:
     # Gather all sensor readings and create a Reading object
     def gather_reading(self):
         """Gather all sensor readings, create a Reading object, and save it."""
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        current_time = datetime.now()
         temperature = self.meas_temperature()
         humidity = self.meas_humidity()
         pressure = self.meas_pressure()
         gas = self.meas_gas()
         lux = self.meas_lux()
         iaq = self.calc_iaq(humidity, gas)
+        temperature_ref, humidity_ref = self.meas_reference()
         
         # Create a Reading object
-        reading = Reading(current_time, temperature, humidity, pressure, gas, iaq, lux)
+        reading = Reading(current_time, temperature, humidity, pressure, gas, iaq, lux, temperature_ref, humidity_ref)
                 
         return reading
 

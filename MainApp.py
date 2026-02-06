@@ -1,27 +1,44 @@
 import tkinter as tk
 from AppGUI import Dashboard
-from AppSensorsDummy import Sensors
 from AppReading import Reading
 from AppSensorData import SensorData
 import threading
 import time
+try:
+    from AppSensors import Sensors
+except ImportError:
+    from AppSensorsDummy import Sensors
 
+import logging
+
+logger = logging.getLogger("therm")
+
+def readData(interval):
+    try:
+        # Gather the reading (and optionally update the app with it)
+        data = sensors.gather_reading()
+        data.print()
+        sensorData.save(data)
+        #sensorData.append_data(data)
+
+        app.update_sensor_data(data)  # Assuming update_data method exists in your Dashboard class to handle this       
+    except Exception as e:
+        logging.error(e, stack_info=True, exc_info=True)
+        
 def update_reading_periodically(app, sensorData, sensors, interval=60):
-    """
-    Function to periodically gather reading every 'interval' seconds and update the app
-    """
+
     def loop():
+        lastExec = time.time() - interval
+
         while app.running:
-            # Gather the reading (and optionally update the app with it)
-            data = sensors.gather_reading()
-            data.print()
-            sensorData.save(data)
-            sensorData.append_data(data)
-
-            app.update_sensor_data(data)  # Assuming update_data method exists in your Dashboard class to handle this
-
-            # Wait for the next interval
-            time.sleep(interval)
+            if time.time() - lastExec <= interval:
+                time.sleep(1)
+                continue;
+            lastExec = time.time()
+            readData(interval)
+        
+        # end loop and quit
+        logger.info('Shutting down')
         root.quit()
         root.destroy()
 
@@ -29,7 +46,12 @@ def update_reading_periodically(app, sensorData, sensors, interval=60):
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()
 
+
 if __name__ == "__main__":
+    logging.basicConfig(filename='thermometer.log', level=logging.INFO)
+    logger.info('Started')
+
+
     root = tk.Tk()
     sensorData = SensorData()
     sensors = Sensors()
@@ -40,7 +62,11 @@ if __name__ == "__main__":
     # sensorData.fake24(fakedata)
 
     # Start the periodic gathering of data every 60 seconds
-    update_reading_periodically(app, sensorData, sensors, interval=1)
+    update_reading_periodically(app, sensorData, sensors, interval=15)
+
+    root.after(1000, lambda: root.wm_attributes('-fullscreen', 'true'))
 
     # Start the Tkinter main loop
     root.mainloop()
+
+
