@@ -14,7 +14,7 @@ import matplotlib.dates as mdates
 
 from PIL import ImageTk, Image
 from AppSensorData import SensorData
-from Reading import Reading
+from AppReading import Reading
 import logging
 
 logger = logging.getLogger("therm")

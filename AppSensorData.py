@@ -5,7 +5,7 @@ import sqlite3
 import threading
 import logging
 
-from Reading import Reading
+from AppReading import Reading
 
 logger = logging.getLogger("therm")
 
