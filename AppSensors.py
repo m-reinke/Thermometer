@@ -8,6 +8,7 @@ import adafruit_veml7700
 import adafruit_htu31d
 import logging
 
+logger = logging.getLogger("therm")
 
 class Sensors:
     def __init__(self):

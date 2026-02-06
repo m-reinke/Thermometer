@@ -39,7 +39,6 @@
     <Compile Include="AppSensors.py" />
     <Compile Include="AppSensorsDummy.py" />
     <Compile Include="MainApp.py" />
-    <Compile Include="Reading.py" />
   </ItemGroup>
   <ItemGroup>
     <Interpreter Include=".venv\">

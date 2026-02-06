@@ -7,7 +7,7 @@ import logging
 
 from Reading import Reading
 
-#from AppGUI import IAQ_ICONS
+logger = logging.getLogger("therm")
 
 # Define the Reading class
 class SensorData:

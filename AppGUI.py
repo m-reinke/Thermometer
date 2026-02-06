@@ -1,3 +1,4 @@
+from re import I
 import numpy as np
 import tkinter as tk
 import tkinter.font as tkFont
@@ -14,6 +15,10 @@ import matplotlib.dates as mdates
 from PIL import ImageTk, Image
 from AppSensorData import SensorData
 from Reading import Reading
+import logging
+
+logger = logging.getLogger("therm")
+
 
 # ────────────────────────
 # Configuration Constants

@@ -1,4 +1,8 @@
 import sqlite3
+import logging
+
+logger = logging.getLogger("therm")
+
 
 # Define the Reading class
 class Reading:
@@ -26,3 +30,4 @@ class Reading:
 
     def print(self):
         print(self.temperature,self.humidity,self.iaq,self.pressure)
+        logger.info(f"Temp: {self.temperature:.2f} C, Temp_ref: {self.temperature_ref:.2f} C, Humidity: {self.humidity:.2f} %, Humidity_ref: {self.humidity_ref:.2f} %, IAQ: {self.iaq}, Pressure: {self.pressure:.2f} hPa, Gas: {self.gas} Ohm, Lux: {self.lux:.1f} lx")   
