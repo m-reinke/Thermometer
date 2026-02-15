@@ -4,10 +4,13 @@ import datetime as dt
 import sqlite3
 import threading
 import logging
-
 from AppReading import Reading
-
 logger = logging.getLogger("therm")
+try:
+    from AppBacklight import AppBacklight, Backlight
+    backlight = AppBacklight()
+except :
+    backlight = None
 
 # Define the Reading class
 class SensorData:
@@ -102,9 +105,13 @@ class SensorData:
         except Exception:
             # append_data expects Reading.time to be string or datetime; averaged.time is ISO string, so should be fine.
             pass
+    
+        if backlight:
+            backlight.set_brightness(averaged.lux)
 
         # Clear buffer
         self._save_buffer.clear()
+
 
 
     def saveToDb(self, reading):

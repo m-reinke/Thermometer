@@ -205,8 +205,11 @@ class Dashboard:
         self.label_temp.config(text=f"{reading.temperature:.1f}°C")
         self.label_humid.config(text=f"Humidity: {reading.humidity:.0f}% {self.datacount:.0f}")
 
-        self.weather_img_label.config(image=self._select_icon(reading.pressure, self.weather_icons))
-        self.iaq_img_label.config(image=self._select_icon(reading.iaq, self.iaq_icons))
+        icon = self._select_icon(reading.pressure, self.weather_icons)
+        self.weather_img_label.config(image=icon)
+
+        icon = self._select_icon(reading.iaq, self.iaq_icons)
+        self.iaq_img_label.config(image=icon)
     # ────────────────────────
     # Animation Loop
     # ────────────────────────
@@ -244,7 +247,12 @@ class Dashboard:
 
             if self.second_axes == "humid" and self.sensor_data.has_humids():
                 data = [r.humidity for r in self.sensor_data.records]
-                label, color, ymin, ymax = "Humidity (%)", "tab:red", 0, 100
+                label, color = "Humidity (%)", "tab:red"
+                if len(data) > 0:
+                    avg_h = sum(data)/len(data)
+                else:
+                    avg_h = 50
+                ymin, ymax = min(avg_h-10, min(data)-2), max(avg_h+10, max(data) + 2)
 
             elif self.second_axes == "iaq" and self.sensor_data.has_iaqs():
                 data = [r.iaq for r in self.sensor_data.records]
@@ -254,7 +262,7 @@ class Dashboard:
             elif self.second_axes == "pressure" and self.sensor_data.has_pressures():
                 data = [r.pressure for r in self.sensor_data.records]
                 label, color = "Pressure (hPa)", "tab:purple"
-                ymin, ymax = min(data) - 2, max(data) + 2
+                ymin, ymax = min(990, min(data) - 2), max(1030, max(data) + 2)
 
             if data is not None:
                 self.ax_second.fill_between(times, data, color=color, alpha=0.3)

@@ -1,14 +1,24 @@
 from datetime import datetime
 from math import isnan
 from AppReading import Reading
+from LocalSettings import Localsettings
 import board
 import busio
 import adafruit_bme680
 import adafruit_veml7700
-import adafruit_htu31d
-import logging
 
+import logging
 logger = logging.getLogger("therm")
+localsettings = Localsettings()
+
+try:
+    print("Trying to import HTU31d...")
+    import adafruit_htu31d
+    has_htu31d = True
+except ImportError:
+    logger.info("HTU31d not loaded")
+    has_htu31d = False
+
 
 class Sensors:
     def __init__(self):
@@ -16,13 +26,15 @@ class Sensors:
         self.i2c = board.I2C()
         self.bme680 = adafruit_bme680.Adafruit_BME680_I2C(self.i2c)
         self.veml7700 = adafruit_veml7700.VEML7700(self.i2c)
-        self.htu31 = adafruit_htu31d.HTU31D(self.i2c)
+        if has_htu31d:
+            self.htu31 = adafruit_htu31d.HTU31D(self.i2c)
+        else:
+            self.htu31 = None
 
-        self.TEMP_OFFSET = -5.3  # Calibrate temperature sensor
 
     # Measure temperature
     def meas_temperature(self):
-        return self.safe_measurement(lambda: self.bme680.temperature + self.TEMP_OFFSET)
+        return self.safe_measurement(lambda: self.bme680.temperature + localsettings.TEMP_OFFSET)
 
     # Measure humidity
     def meas_humidity(self):
@@ -30,7 +42,7 @@ class Sensors:
 
     # Measure air pressure
     def meas_pressure(self):
-        return self.safe_measurement(lambda: self.bme680.pressure)
+        return self.safe_measurement(lambda: self.bme680.pressure + localsettings.SEA_LEVEL_CORRECTION)
 
     # Measure gas resistance
     def meas_gas(self, n_meas=5):

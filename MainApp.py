@@ -5,8 +5,10 @@ from AppSensorData import SensorData
 import threading
 import time
 try:
+    print("Trying to import real sensors...")
     from AppSensors import Sensors
 except ImportError:
+    print("importing dummy sensors...")
     from AppSensorsDummy import Sensors
 
 import logging
